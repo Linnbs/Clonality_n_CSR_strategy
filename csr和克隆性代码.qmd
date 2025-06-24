@@ -1,0 +1,564 @@
+---
+title: "克隆性和C-S-R策略对外来植物入侵性的影响"
+author: "Bi-Cheng Dong and Yan Lv"
+date: "2025-05-20"
+format: 
+  html:
+    theme: cosmo
+    toc: true
+    toc-location: left
+    smooth-scroll: true
+    code-fold: true
+    code-tools: true
+editor: visual
+---
+
+## 简介
+
+植物入侵是全球生物多样性丧失和生态系统功能退化的主要驱动因素之一。克隆繁殖作为入侵植物的重要功能性状，其与CSR生活史策略的交互作用对植物入侵过程的影响尚不明确。本研究基于中国外来入侵植物名录信息，结合克隆特性（克隆性、克隆器官类型）与CSR策略量化指标，采用有序逻辑回归模型分析二者对入侵危害等级和分布范围的交互影响。研究纳入96种入侵植物进行克隆性分析，以及43种入侵克隆植物进行克隆器官类型分析。
+
+分析流程包括： 1. **数据准备**: 加载必要的 R 包，导入并清理数据。 2. **克隆性与入侵性分析**: \* 分析克隆有无与 CSR 策略对入侵等级的综合影响。 \* 分析克隆有无与 CSR 策略对入侵范围的综合影响。 3. **克隆类型与入侵性分析**: \* 分析不同克隆类型（地上/地下）与 CSR 策略对入侵等级的综合影响。 \* 分析不同克隆类型（地上/地下）与 CSR 策略对入侵范围的综合影响。
+
+每个分析部分都包含数据建模和可视化两个环节。
+
+## 1. 环境设置与数据导入
+
+首先，我们设置工作目录，并加载本次分析所需的 R 包。
+
+```{r setup, message=FALSE, warning=FALSE}
+# 加载必要的包
+library(AER)
+library(broom)
+library(ggpubr)
+library(MASS)
+library(ordinal)
+library(patchwork)
+library(purrr)
+library(tidyverse)
+
+# 设置工作目录
+# 请注意：通常建议使用相对路径或 RStudio 项目来管理工作目录
+setwd("D:/我的坚果云/克隆性和csr策略")
+getwd()
+
+# 检查目录是否存在，如果不存在则创建
+if (!dir.exists("results02")) {
+  dir.create("results02")
+  cat("目录 'results02' 已创建\n")
+} else {
+  cat("目录 'results02' 已存在\n")
+}
+
+```
+
+接下来，导入数据集。该数据集包含植物的克隆属性、CSR 策略得分以及入侵信息。
+
+```{r load-data}
+
+# 导入数据
+df00 <- read_csv("012.iplant_ias_clonality_csr.csv", locale = locale(encoding = "GB18030"))
+str(df00)
+```
+
+## 2. 克隆性与CSR策略对入侵性的影响
+
+本部分探究克隆与否 (`clonality`) 及 CSR 策略得分 (`c_score`, `s_score`, `r_score`) 如何共同影响入侵等级和入侵范围。
+
+### 2.1 对入侵等级的影响 (有序逻辑回归)
+
+#### 数据处理与模型拟合
+
+我们首先筛选数据，将入侵等级 (`invasion_level`) 和克隆性 (`clonality`) 转换为因子类型，为有序逻辑回归做准备。
+
+```{r analysis-level-1}
+# 提取相关数据, 调整分布数据NA为0
+df00 <- df00 %>% mutate(n.prov = ifelse(is.na(n.prov), 0, n.prov))
+
+# 去除缺失数据
+df01 <- df00 %>%
+  filter(!is.na(clonality) & !is.na(c_score) & !is.na(n.prov))
+
+# 将 invasion_level 设置为有序因子
+df01$invasion_level <- factor(df01$invasion_level, levels = c(4, 3, 2, 1), ordered = TRUE)
+df01$clonality <- factor(df01$clonality, levels = c("non-clonal", "clonal"))
+
+# 检查分类变量的分布
+table(df01$invasion_level)
+
+# 使用 clm 进行有序逻辑回归
+fit01.ias.level.c <- clm(invasion_level ~ clonality + c_score + clonality:c_score, data = df01, link = "logit")
+fit01.ias.level.s <- clm(invasion_level ~ clonality + s_score + clonality:s_score, data = df01, link = "logit")
+fit01.ias.level.r <- clm(invasion_level ~ clonality + r_score + clonality:r_score, data = df01, link = "logit")
+```
+
+查看并整理模型结果。
+
+```{r summary-level-1}
+# 输出模型结果
+summary(fit01.ias.level.c)
+summary(fit01.ias.level.s)
+summary(fit01.ias.level.r)
+
+# 使用 broom::tidy 提取并合并模型结果
+results_fit01.ias.level.c <- broom::tidy(fit01.ias.level.c) %>%
+  mutate(model = "fit01.ias.level.c") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit01.ias.level.s <- broom::tidy(fit01.ias.level.s) %>%
+  mutate(model = "fit01.ias.level.s") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit01.ias.level.r <- broom::tidy(fit01.ias.level.r) %>%
+  mutate(model = "fit01.ias.level.r") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit01.ias.level <- bind_rows(
+    results_fit01.ias.level.c,
+    results_fit01.ias.level.s,
+    results_fit01.ias.level.r
+  )
+
+# 结果保存到CSV文件
+# write_csv(results_fit01.ias.level, "./results02/results_fit01.ias.level.csv")
+head(results_fit01.ias.level)
+```
+
+#### 可视化
+
+使用箱线图展示不同克隆性、不同 CSR 策略得分下入侵等级的分布。
+
+```{r plot-level-1}
+# 转换数据为长格式以方便作图
+df01_long <- df01 %>%
+  pivot_longer(cols = c(c_score, s_score, r_score),
+               names_to = "score_type",
+               values_to = "score_value") %>% 
+   mutate(score_type = factor(score_type, levels = c("c_score", "s_score", "r_score")))
+
+# 自定义分面标题
+score_labels <- c("c_score" = "C-score", "r_score" = "R-score", "s_score" = "S-score")
+
+# 使用 facet_wrap 绘图
+plot.rank01 <- ggplot(df01_long, aes(x = score_value, y = invasion_level, fill = clonality)) +
+  geom_boxplot(width = 0.5, alpha = 0.7) +
+  labs(x = "Score (%)", y = "Invasion rankings") +
+  scale_fill_manual(
+    values = c("non-clonal" = "#E57373", "clonal" = "#64B5F6"),
+    name = "Clonality:",
+    labels = c("No", "Yes")
+  ) +
+  facet_wrap(~score_type, scales = "free_x", labeller = as_labeller(score_labels)) +
+  scale_x_continuous(limits = c(0, 100)) +
+  theme_bw() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    strip.text = element_text(family = "serif", size = 14),
+    strip.background = element_rect(size = 1, linetype = "solid"),
+    axis.line = element_line(size = 1, linetype = "solid"),
+    axis.ticks = element_line(colour = "black", size = 1),
+    axis.text = element_text(family = "serif", colour = "black", size = 14),
+    axis.title = element_text(family = "serif", colour = "black", size = 14),
+    legend.position = "top",
+    legend.title = element_text(size = 14, family = "serif"),
+    legend.text = element_text(size = 14, family = "serif")
+  )
+
+print(plot.rank01)
+
+# 保存图像
+# ggexport(plot.rank01,
+#       filename = "./results02/plot.rank01.png",
+#       width = 2400,
+#       height = 1200,
+#       pointsize = 12,
+#       res = 300
+# )
+```
+
+### 2.2 对入侵范围的影响 (类泊松回归)
+
+#### 数据处理与模型拟合
+
+入侵范围 (`n.prov`) 是计数数据，我们使用广义线性模型 (GLM) 进行拟合。由于数据可能存在过度离散，我们选择 `quasipoisson` 分布。
+
+```{r analysis-dist-1}
+# 使用广义线性模型（GLM）拟合
+fit01.ias.dist.c <- glm(n.prov ~ clonality + c_score + clonality:c_score, data = df01, family = quasipoisson(link = "log"))
+fit01.ias.dist.s <- glm(n.prov ~ clonality + s_score + clonality:s_score, data = df01, family = quasipoisson(link = "log"))
+fit01.ias.dist.r <- glm(n.prov ~ clonality + r_score + clonality:r_score, data = df01, family = quasipoisson(link = "log"))
+```
+
+查看并整理模型结果。
+
+```{r summary-dist-1}
+# 输出模型结果
+summary(fit01.ias.dist.c)
+summary(fit01.ias.dist.s)
+summary(fit01.ias.dist.r)
+
+# 使用 broom::tidy 提取并合并模型结果
+results_fit01.ias.dist.c <- broom::tidy(fit01.ias.dist.c) %>%
+  mutate(model = "fit01.ias.dist.c") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit01.ias.dist.s <- broom::tidy(fit01.ias.dist.s) %>%
+  mutate(model = "fit01.ias.dist.s") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit01.ias.dist.r <- broom::tidy(fit01.ias.dist.r) %>%
+  mutate(model = "fit01.ias.dist.r") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit01.ias.dist <- bind_rows(
+    results_fit01.ias.dist.c,
+    results_fit01.ias.dist.s,
+    results_fit01.ias.dist.r
+  )
+
+# 结果保存到CSV文件
+# write_csv(results_fit01.ias.dist, "./results02/results_fit01.ias.dist.csv")
+head(results_fit01.ias.dist)
+```
+
+#### 可视化
+
+为了可视化模型结果，我们生成预测数据，并在散点图上绘制拟合曲线。
+
+```{r plot-dist-1}
+# 定义评分变量和类型
+score_types <- c("c_score", "s_score", "r_score")
+score_seq <- seq(0, 100, length.out = 21)
+
+# 使用map批量拟合模型并生成预测数据
+fit01.ias.dist <- map(score_types, function(var) {
+  formula <- as.formula(paste("n.prov ~ clonality +", var, "+ clonality:", var))
+  glm(formula, data = df01, family = quasipoisson(link = "log"))
+})
+names(fit01.ias.dist) <- score_types
+
+pred01_list <- map2(score_types, fit01.ias.dist, function(var_name, model) {
+  var_grid <- setNames(list(score_seq, unique(df01$clonality)), c(var_name, "clonality"))
+  new_data <- do.call(expand.grid, var_grid)
+  new_data$n.prov <- predict(model, newdata = new_data, type = "response")
+  new_data$score_type <- var_name
+  new_data$score_value <- new_data[[var_name]]
+  new_data[[var_name]] <- NULL
+  return(new_data)
+})
+
+pred01_long <- bind_rows(pred01_list) %>%
+  arrange(score_type, clonality, score_value) %>% 
+  mutate(score_type = factor(score_type, levels = c("c_score", "s_score", "r_score")))
+
+# 绘图
+plot.dist01 <- ggplot(df01_long, aes(x = score_value, y = n.prov, color = clonality)) +
+  geom_point(alpha = 0.7, size = 4) +
+  geom_line(data = pred01_long, aes(x = score_value, y = n.prov), size = 1) +
+  labs(x = "Score (%)", y = "No. provinces") +
+  scale_color_manual(
+    values = c("non-clonal" = "#E57373", "clonal" = "#64B5F6"),
+    name = "Clonality:",
+    labels = c("No", "Yes")
+  ) +
+  facet_wrap(~score_type, scales = "free_x", labeller = as_labeller(score_labels)) +
+  scale_x_continuous(limits = c(0, 100)) +
+  theme_bw() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    strip.text = element_text(family = "serif", size = 14),
+    strip.background = element_rect(size = 1, linetype = "solid"),
+    axis.line = element_line(size = 1, linetype = "solid"),
+    axis.ticks = element_line(colour = "black", size = 1),
+    axis.text = element_text(family = "serif", colour = "black", size = 14),
+    axis.title = element_text(family = "serif", colour = "black", size = 14),
+    legend.position = "top",
+    legend.title = element_text(size = 14, family = "serif"),
+    legend.text = element_text(size = 14, family = "serif")
+  )
+
+print(plot.dist01)
+
+# 保存图像
+# ggexport(plot.dist01,
+#          filename = "./results02/plot.dist01.png",
+#          width = 2400,
+#          height = 1200,
+#          pointsize = 12,
+#          res = 300
+# )
+```
+
+### 2.3 汇总图
+
+将入侵等级和入侵范围的图合并展示。
+
+```{r plot-summary-1}
+# 汇总图
+plot01 <- plot.rank01 +
+          plot.dist01 +
+          plot_layout(ncol = 1) +
+          plot_annotation(tag_levels = 'A')
+
+print(plot01)
+
+# 保存汇总图
+# ggexport(plot01,
+#          filename = "./results02/plot01.png",
+#          width = 2400,
+#          height = 2400,
+#          pointsize = 12,
+#          res = 300
+# )
+```
+
+------------------------------------------------------------------------
+
+## 3. 克隆类型与CSR策略对入侵性的影响
+
+本部分进一步细分克隆植物，探究不同克隆类型 (`clonal_type`: 地上/地下) 与 CSR 策略如何影响入侵性。
+
+### 3.1 对入侵等级的影响 (有序逻辑回归)
+
+#### 数据处理与模型拟合
+
+筛选出具有明确地上或地下克隆器官的物种，并构建有序逻辑回归模型。
+
+```{r analysis-level-2}
+# 筛选有效数据
+df02 <- df00 %>%
+  filter(clonal_type %in% c("aboveground", "belowground")) %>%
+  filter(!is.na(clonal_type) & !is.na(c_score) & !is.na(n.prov))
+
+table(df02$clonal_type)
+nrow(df02)
+
+# 将变量设置为因子
+df02$invasion_level <- factor(df02$invasion_level, levels = c(4, 3, 2, 1), ordered = TRUE)
+df02$clonal_type <- factor(df02$clonal_type, levels = c("aboveground", "belowground"))
+
+# 模型拟合
+fit02.ias.level.c <- clm(invasion_level ~ clonal_type + c_score + clonal_type:c_score, data = df02, link = "logit")
+fit02.ias.level.s <- clm(invasion_level ~ clonal_type + s_score + clonal_type:s_score, data = df02, link = "logit")
+fit02.ias.level.r <- clm(invasion_level ~ clonal_type + r_score + clonal_type:r_score, data = df02, link = "logit")
+```
+
+查看并整理模型结果。
+
+```{r summary-level-2}
+# 输出模型结果
+summary(fit02.ias.level.c)
+summary(fit02.ias.level.s)
+summary(fit02.ias.level.r)
+
+# 使用 broom::tidy 提取并合并模型结果
+results_fit02.ias.level.c <- broom::tidy(fit02.ias.level.c) %>%
+  mutate(model = "fit02.ias.level.c") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit02.ias.level.s <- broom::tidy(fit02.ias.level.s) %>%
+  mutate(model = "fit02.ias.level.s") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit02.ias.level.r <- broom::tidy(fit02.ias.level.r) %>%
+  mutate(model = "fit02.ias.level.r") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit02.ias.level <- bind_rows(
+    results_fit02.ias.level.c,
+    results_fit02.ias.level.s,
+    results_fit02.ias.level.r
+  )
+
+# 保存结果
+# write_csv(results_fit02.ias.level, "./results02/results_fit02.ias.level.csv")
+head(results_fit02.ias.level)
+```
+
+#### 可视化
+
+使用箱线图展示不同克隆类型、不同 CSR 策略得分下入侵等级的分布。
+
+```{r plot-level-2}
+# 转换数据为长格式
+df02_long <- df02 %>%
+  pivot_longer(cols = c(c_score, s_score, r_score),
+               names_to = "score_type",
+               values_to = "score_value") %>% 
+   mutate(score_type = factor(score_type, levels = c("c_score", "s_score", "r_score")))
+
+# 绘图
+plot.rank02 <- ggplot(df02_long, aes(x = score_value, y = invasion_level, fill = clonal_type)) +
+  geom_boxplot(width = 0.5, alpha = 0.7) +
+  labs(x = "Score (%)", y = "Invasion rankings") +
+  scale_fill_manual(
+    values = c("aboveground" = "#E57373", "belowground" = "#64B5F6"),
+    name = "Clonal type:",
+    labels = c("Aboveground", "Belowground")
+  ) +
+  facet_wrap(~score_type, scales = "free_x", labeller = as_labeller(score_labels)) +
+  scale_x_continuous(limits = c(0, 100)) +
+  theme_bw() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    strip.text = element_text(family = "serif", size = 14),
+    strip.background = element_rect(size = 1, linetype = "solid"),
+    axis.line = element_line(size = 1, linetype = "solid"),
+    axis.ticks = element_line(colour = "black", size = 1),
+    axis.text = element_text(family = "serif", colour = "black", size = 14),
+    axis.title = element_text(family = "serif", colour = "black", size = 14),
+    legend.position = "top",
+    legend.title = element_text(size = 14, family = "serif"),
+    legend.text = element_text(size = 14, family = "serif")
+  )
+
+print(plot.rank02)
+
+# 保存图像
+# ggexport(plot.rank02,
+#       filename = "./results02/plot.rank02.png",
+#       width = 2400,
+#       height = 1200,
+#       pointsize = 12,
+#       res = 300
+# )
+```
+
+### 3.2 对入侵范围的影响 (类泊松回归)
+
+#### 数据处理与模型拟合
+
+与上一部分类似，我们使用类泊松回归模型分析克隆类型与 CSR 策略对入侵范围的影响。
+
+```{r analysis-dist-2}
+# 模型拟合
+fit02.ias.dist.c <- glm(n.prov ~ clonal_type + c_score + clonal_type:c_score, data = df02, family = quasipoisson(link = "log"))
+fit02.ias.dist.s <- glm(n.prov ~ clonal_type + s_score + clonal_type:s_score, data = df02, family = quasipoisson(link = "log"))
+fit02.ias.dist.r <- glm(n.prov ~ clonal_type + r_score + clonal_type:r_score, data = df02, family = quasipoisson(link = "log"))
+```
+
+查看并整理模型结果。
+
+```{r summary-dist-2}
+# 输出模型结果
+summary(fit02.ias.dist.c)
+summary(fit02.ias.dist.s)
+summary(fit02.ias.dist.r)
+
+# 使用 broom::tidy 提取并合并模型结果
+results_fit02.ias.dist.c <- broom::tidy(fit02.ias.dist.c) %>%
+  mutate(model = "fit02.ias.dist.c") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit02.ias.dist.s <- broom::tidy(fit02.ias.dist.s) %>%
+  mutate(model = "fit02.ias.dist.s") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit02.ias.dist.r <- broom::tidy(fit02.ias.dist.r) %>%
+  mutate(model = "fit02.ias.dist.r") %>%
+  mutate_if(is.numeric, round, 3)
+
+results_fit02.ias.dist <- bind_rows(
+    results_fit02.ias.dist.c,
+    results_fit02.ias.dist.s,
+    results_fit02.ias.dist.r
+  )
+
+# 保存结果
+# write_csv(results_fit02.ias.dist, "./results02/results_fit02.ias.dist.csv")
+head(results_fit02.ias.dist)
+```
+
+#### 可视化
+
+生成预测数据，并在散点图上绘制不同克隆类型的拟合曲线。
+
+```{r plot-dist-2}
+# 定义评分变量和类型
+score_types <- c("c_score", "s_score", "r_score")
+score_seq <- seq(0, 100, length.out = 21)
+
+# 使用map批量拟合模型并生成预测数据
+fit02.ias.dist <- map(score_types, function(var) {
+  formula <- as.formula(paste("n.prov ~ clonal_type +", var, "+ clonal_type:", var))
+  glm(formula, data = df02, family = quasipoisson(link = "log"))
+})
+names(fit02.ias.dist) <- score_types
+
+pred02_list <- map2(score_types, fit02.ias.dist, function(var_name, model) {
+  var_grid <- setNames(list(score_seq, unique(df02$clonal_type)), c(var_name, "clonal_type"))
+  new_data <- do.call(expand.grid, var_grid)
+  new_data$n.prov <- predict(model, newdata = new_data, type = "response")
+  new_data$score_type <- var_name
+  new_data$score_value <- new_data[[var_name]]
+  new_data[[var_name]] <- NULL
+  return(new_data)
+})
+
+pred02_long <- bind_rows(pred02_list) %>%
+  arrange(score_type, clonal_type, score_value) %>% 
+  mutate(score_type = factor(score_type, levels = c("c_score", "s_score", "r_score")))
+
+# 绘图
+plot.dist02 <- ggplot(df02_long, aes(x = score_value, y = n.prov, color = clonal_type)) +
+  geom_point(alpha = 0.7, size = 4) +
+  geom_line(data = pred02_long, aes(x = score_value, y = n.prov), size = 1) +
+  labs(x = "Score (%)", y = "No. provinces") +
+  scale_color_manual(
+    values = c("aboveground" = "#E57373", "belowground" = "#64B5F6"),
+    name = "Clonal type:",
+    labels = c("Aboveground", "Belowground")
+  ) +
+  facet_wrap(~score_type, scales = "free_x", labeller = as_labeller(score_labels)) +
+  scale_x_continuous(limits = c(0, 100)) +
+  theme_bw() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    strip.text = element_text(family = "serif", size = 14),
+    strip.background = element_rect(size = 1, linetype = "solid"),
+    axis.line = element_line(size = 1, linetype = "solid"),
+    axis.ticks = element_line(colour = "black", size = 1),
+    axis.text = element_text(family = "serif", colour = "black", size = 14),
+    axis.title = element_text(family = "serif", colour = "black", size = 14),
+    legend.position = "top",
+    legend.title = element_text(size = 14, family = "serif"),
+    legend.text = element_text(size = 14, family = "serif")
+  )
+
+print(plot.dist02)
+
+# 保存图像
+# ggexport(plot.dist02,
+#       filename = "./results02/plot.dist02.png",
+#       width = 2400,
+#       height = 1200,
+#       pointsize = 12,
+#       res = 300
+# )
+```
+
+### 3.3 汇总图
+
+将关于克隆类型的入侵等级和入侵范围的图合并展示。
+
+```{r plot-summary-2}
+# 汇总图
+plot02 <- plot.rank02 +
+          plot.dist02 +
+          plot_layout(ncol = 1) +
+          plot_annotation(tag_levels = 'A')
+
+print(plot02)
+
+# 保存汇总图
+# ggexport(plot02,
+#          filename = "./results02/plot02.png",
+#          width = 2400,
+#          height = 2400,
+#          pointsize = 12,
+#          res = 300
+# )
+```
